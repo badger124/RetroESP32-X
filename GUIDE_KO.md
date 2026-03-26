@@ -285,6 +285,105 @@ GitHub **후원(Sponsorship)** 버튼 설정 파일입니다. 저장소 페이�
 
 ---
 
+## 펌웨어 업로드 방법
+
+RetroESP32-X는 ESP32 기반 보드로, 펌웨어를 업로드하려면 **USB-시리얼 어댑터**와 **부팅 모드(Download Mode) 진입**이 필요합니다.
+
+### 필요한 준비물
+
+| 항목 | 권장 제품 |
+|---|---|
+| USB-시리얼 어댑터 | CP2102, CH340, FT232RL 중 하나 |
+| 케이블 | 어댑터↔J4 헤더 연결용 점퍼 와이어 |
+| 소프트웨어 | [esptool.py](https://github.com/espressif/esptool) 또는 Arduino IDE / PlatformIO |
+| 드라이버 | CP2102: [Silicon Labs 드라이버](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers), CH340: [CH340 드라이버](http://www.wch-ic.com/downloads/CH341SER_EXE.html) |
+
+### J4 시리얼 헤더 핀 배열
+
+J4(6핀 시리얼 헤더, 기본 미실장)는 펌웨어 업로드 및 디버깅용 핀입니다.  
+헤더를 직접 납땜하거나 핀을 꽂아서 사용합니다.
+
+| J4 핀 번호 | 신호 | 어댑터 연결 |
+|---|---|---|
+| 1 | GND | 어댑터 GND |
+| 2 | VCC (3.3V) | (연결 불필요 — 보드 자체 전원 사용) |
+| 3 | TX (보드 → PC) | 어댑터 **RX** |
+| 4 | RX (PC → 보드) | 어댑터 **TX** |
+| 5 | RTS / IO0 | (자동 리셋 지원 어댑터에서 연결) |
+| 6 | DTR / EN | (자동 리셋 지원 어댑터에서 연결) |
+
+> ⚠️ **TX/RX 교차 연결:** 보드 TX → 어댑터 RX, 보드 RX → 어댑터 TX 로 연결해야 합니다. 같은 방향으로 연결하면 통신이 되지 않습니다.
+
+### 부팅 모드(Download Mode) 진입 방법
+
+**수동 진입 방법:**
+
+1. **S3(전원 스위치)를 ON** 상태로 합니다.
+2. **GPIO0(BOOT 핀)을 GND에 연결**합니다. (J4의 IO0 핀 또는 ESP32 모듈의 GPIO0 패드를 GND에 순간 단락)
+3. **EN(RESET) 버튼을 눌렀다 떼거나** EN 핀을 순간 GND에 연결합니다.
+4. GPIO0을 GND에서 분리합니다. — 이제 보드가 Download Mode로 진입합니다.
+5. PC에서 업로드 명령을 실행합니다.
+
+**자동 리셋 어댑터(RTS/DTR 지원):**  
+CP2102 또는 FT232 계열 어댑터에 RTS·DTR 핀을 J4의 IO0·EN 핀에 연결하면,  
+esptool이나 Arduino IDE가 자동으로 부팅 모드 진입과 리셋을 처리합니다.
+
+### esptool.py로 업로드
+
+```bash
+# 펌웨어 이미지 단일 플래시
+esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
+  write_flash -z 0x1000 firmware.bin
+
+# 부트로더 + 파티션 + 앱 전체 플래시 (Retro-Go 등)
+esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 \
+  write_flash \
+  0x1000 bootloader.bin \
+  0x8000 partition-table.bin \
+  0x10000 retro-go.bin
+```
+
+> Windows에서는 `/dev/ttyUSB0` 대신 `COM3` 등 장치 관리자에 표시된 포트 번호를 사용하세요.
+
+### Retro-Go 펌웨어 업로드 (권장)
+
+RetroESP32-X의 공식 펌웨어는 [Ducalex의 Retro-Go](https://github.com/ducalex/retro-go)입니다.
+
+1. Retro-Go 저장소의 [Releases](https://github.com/ducalex/retro-go/releases) 페이지에서 최신 릴리즈를 다운로드합니다.
+2. `flash.sh` (Linux/Mac) 또는 `flash.bat` (Windows) 스크립트를 사용하거나, 위의 esptool.py 명령으로 직접 플래시합니다.
+3. 업로드 완료 후 **EN(RESET)을 한 번 더 눌러** 정상 부팅합니다.
+
+### 업로드 후 SD 카드 설정
+
+1. microSD 카드를 **FAT32** 또는 **exFAT**으로 포맷합니다.
+2. 다음 폴더 구조로 ROM 파일을 복사합니다:
+
+```
+SD 카드 루트/
+├── roms/
+│   ├── gb/      ← Game Boy ROM (.gb)
+│   ├── gbc/     ← Game Boy Color ROM (.gbc)
+│   ├── nes/     ← NES ROM (.nes)
+│   ├── sms/     ← Sega Master System ROM (.sms)
+│   └── ...
+└── retro-go/
+    └── saves/   ← 세이브 파일 자동 생성
+```
+
+3. SD 카드를 J5(microSD 슬롯)에 삽입하고 전원을 켭니다.
+
+### 문제 해결
+
+| 증상 | 원인 및 해결 방법 |
+|---|---|
+| 시리얼 포트가 인식되지 않음 | USB-시리얼 어댑터 드라이버 미설치 — 드라이버 설치 후 PC 재시작 |
+| `Connecting...` 후 타임아웃 | 부팅 모드 미진입 — GPIO0/GND 연결 타이밍 재시도 |
+| 업로드 중 CRC 오류 | 통신 속도(baud rate) 낮추기 (`--baud 115200`) |
+| 업로드 후 부팅 안 됨 | EN(RESET) 버튼을 눌러 재부팅, 또는 전원을 껐다 켜기 |
+| 화면이 나오지 않음 | LCD FPC 케이블 연결 확인 (J2 커넥터), 또는 S3 전원 스위치 확인 |
+
+---
+
 ## 보드 종류 요약
 
 이 저장소에는 세 가지 보드의 설계 파일이 포함되어 있습니다.
